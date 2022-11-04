@@ -17,6 +17,8 @@ from ..general import LOGGER, xyn2xy, xywhn2xyxy, xyxy2xywhn
 from ..torch_utils import torch_distributed_zero_first
 from .augmentations import mixup, random_perspective
 
+RANK = int(os.getenv('RANK', -1))
+
 
 def create_dataloader(path,
                       imgsz,
@@ -61,8 +63,8 @@ def create_dataloader(path,
     nw = min([os.cpu_count() // max(nd, 1), batch_size if batch_size > 1 else 0, workers])  # number of workers
     sampler = None if rank == -1 else distributed.DistributedSampler(dataset, shuffle=shuffle)
     loader = DataLoader if image_weights else InfiniteDataLoader  # only DataLoader allows for attribute updates
-    # generator = torch.Generator()
-    # generator.manual_seed(0)
+    generator = torch.Generator()
+    generator.manual_seed(6148914691236517205 + RANK)
     return loader(
         dataset,
         batch_size=batch_size,
@@ -72,7 +74,7 @@ def create_dataloader(path,
         pin_memory=True,
         collate_fn=LoadImagesAndLabelsAndMasks.collate_fn4 if quad else LoadImagesAndLabelsAndMasks.collate_fn,
         worker_init_fn=seed_worker,
-        # generator=generator,
+        generator=generator,
     ), dataset
 
 
@@ -91,12 +93,13 @@ class LoadImagesAndLabelsAndMasks(LoadImagesAndLabels):  # for training/testing
         single_cls=False,
         stride=32,
         pad=0,
+        min_items=0,
         prefix="",
         downsample_ratio=1,
         overlap=False,
     ):
         super().__init__(path, img_size, batch_size, augment, hyp, rect, image_weights, cache_images, single_cls,
-                         stride, pad, prefix)
+                         stride, pad, min_items, prefix)
         self.downsample_ratio = downsample_ratio
         self.overlap = overlap
 
